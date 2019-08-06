@@ -285,11 +285,10 @@ git_get () {
     local git_flags=" --quiet --depth=1 "
     local clone_flags=" $git_repo $git_extra_flags "
     local pull_flags="origin/$git_branch"
-    echo -e "${FUNCNAME[1]}\nremote hash: $remote_git\nlocal hash: $local_git"
+    #echo -e "${FUNCNAME[1]}\nremote hash: $remote_git\nlocal hash: $local_git"
       
     if [ ! "$remote_git" = "$local_git" ]
         then
-            printf "%${COLUMNS}s\n"  "${FUNCNAME[1]} refreshing cache files from git."
             # Does the local repo even exist?
             if [ ! -d "$src_cache/$local_path/.git" ] 
                 then
@@ -305,14 +304,22 @@ git_get () {
                 then 
                     echo "Branch mismatch!"
                     # Be safe.
-                    recreate_git $git_repo $local_path $git_branch
+                    cd $src_cache/$local_path
+                    git checkout $git_branch || recreate_git $git_repo \
+                    $local_path $git_branch
+                else
+                echo -e "${FUNCNAME[1]}\nremote hash: $remote_git\nlocal hash: \
+            BRANCH SWITCH"
             fi
+            printf "%${COLUMNS}s\n"  "${FUNCNAME[1]} refreshing cache files from git."
+            
             # sync to local branch
             cd $src_cache/$local_path
             git fetch --all $git_flags &>> /tmp/${FUNCNAME[1]}.git.log || true
             git reset --hard $pull_flags --quiet 2>> /tmp/${FUNCNAME[1]}.git.log
         else
-            echo -e "${FUNCNAME[1]} getting files from cache volume. 😎\n"
+            echo -e "${FUNCNAME[1]}\nremote hash: $remote_git\nlocal hash: \
+            $local_git\n\r${FUNCNAME[1]} getting files from cache volume. 😎\n"
     fi
     cd $src_cache/$local_path 
     last_commit=$(git log --graph \
@@ -1237,10 +1244,10 @@ endfunc
 # The shell command would be something like this:
 # docker exec -it `cat ~/docker-rpi4-imagebuilder/build.cid` /bin/bash
 # Note that this flag is looked for in the image_and_chroot_cleanup function
-touch /flag/done.ok_to_umount_image_after_build
+[[ ! $JUSTDEBS ]] && touch /flag/done.ok_to_umount_image_after_build
 
 # For debugging.
-touch /flag/done.ok_to_continue_after_mount_image
+[[ ! $JUSTDEBS ]] && touch /flag/done.ok_to_continue_after_mount_image
 
 # Arbitrary pause for debugging.
 touch /flag/done.ok_to_continue_after_here
@@ -1257,30 +1264,30 @@ touch /flag/done.ok_to_exit_container_after_build
 # So we will work around it.
 #inotify_touch_events &
 
-base_image_check
-image_extract &
-image_mount &
-rpi_firmware &
-armstub8-gic &
-non-free_firmware & 
-rpi_userland &
-andrei_gherzan_uboot_fork &
+[[ ! $JUSTDEBS ]] && base_image_check
+[[ ! $JUSTDEBS ]] && image_extract &
+[[ ! $JUSTDEBS ]] && image_mount &
+[[ ! $JUSTDEBS ]] && rpi_firmware &
+[[ ! $JUSTDEBS ]] && armstub8-gic &
+[[ ! $JUSTDEBS ]] && non-free_firmware & 
+[[ ! $JUSTDEBS ]] && rpi_userland &
+[[ ! $JUSTDEBS ]] && andrei_gherzan_uboot_fork &
 kernelbuild_setup &
-rpi_config_txt_configuration &
-rpi_cmdline_txt_configuration &
-wifi_firmware_modification &
-first_boot_scripts_setup &
-added_scripts &
+[[ ! $JUSTDEBS ]] && rpi_config_txt_configuration &
+[[ ! $JUSTDEBS ]] && rpi_cmdline_txt_configuration &
+[[ ! $JUSTDEBS ]] && wifi_firmware_modification &
+[[ ! $JUSTDEBS ]] && first_boot_scripts_setup &
+[[ ! $JUSTDEBS ]] && added_scripts &
 waitforstart "kernelbuild_setup" && kernel_debs &
-arm64_chroot_setup &
-image_apt_installs &
-spinnerwait image_apt_installs
-kernel_deb_install
-image_and_chroot_cleanup
-image_unmount
-compressed_image_export &
-[[ $DELTA ]] && xdelta3_image_export
-[[ $DELTA ]] && waitfor "xdelta3_image_export"
+[[ ! $JUSTDEBS ]] && arm64_chroot_setup &
+[[ ! $JUSTDEBS ]] && image_apt_installs &
+[[ ! $JUSTDEBS ]] && spinnerwait image_apt_installs
+[[ ! $JUSTDEBS ]] && kernel_deb_install
+[[ ! $JUSTDEBS ]] && image_and_chroot_cleanup
+[[ ! $JUSTDEBS ]] && image_unmount
+[[ ! $JUSTDEBS ]] && compressed_image_export &
+[[ ! $JUSTDEBS ]] && [[ $DELTA ]] && xdelta3_image_export
+[[ ! $JUSTDEBS ]] && [[ $DELTA ]] && waitfor "xdelta3_image_export"
 export_log
 # This stops the tail process.
 rm $TMPLOG
