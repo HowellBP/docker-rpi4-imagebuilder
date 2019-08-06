@@ -7,8 +7,9 @@ function usage {
     cat <<EOF 1>&2
 usage: $PROG [options...] SOURCEDIR_for_scripts
 Options:
-  -i IMAGE  Name of the docker image (including tag) to use as package build environment.
-  -o DIR    Destination directory to store packages to.
+  -i IMAGE      Name of the docker image (including tag) to use as package build environment.
+  -o DIR        Destination directory to store packages to.
+  -r RELEASE    Distribution release (Eoan or Bionic)
 EOF
     exit 1
 }
@@ -35,6 +36,9 @@ while getopts "i:o:h" opt; do
         o)
             outdir="$OPTARG"
             ;;
+        r)
+            release="$OPTARG"
+            ;;
         h)
             usage
             ;;
@@ -47,8 +51,12 @@ done
 shift $(($OPTIND - 1))
 
 # This should be the image we want to modify.
-base_url="http://cdimage.ubuntu.com/ubuntu-server/daily-preinstalled/current/"
-base_image="eoan-preinstalled-server-arm64+raspi3.img.xz"
+if [ $release = "bionic" ]; then
+    base_url="http://cdimage.ubuntu.com/ubuntu-server/bionic/daily-preinstalled/current/"
+else
+    base_url="http://cdimage.ubuntu.com/ubuntu-server/daily-preinstalled/current/"
+fi
+base_image="${release}-preinstalled-server-arm64+raspi3.img.xz"
 base_image_url="${base_url}/${base_image}"
 cache_volume=rpi4-imagebuilder-cache
 
