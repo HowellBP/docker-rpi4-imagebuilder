@@ -15,6 +15,7 @@ RUN set -ex \
                devscripts \
                dkms \
                dpkg-dev \
+               dosfstools \
                e2fsprogs \
                equivs \
                fakeroot \
