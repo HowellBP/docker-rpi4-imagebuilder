@@ -14,7 +14,7 @@
 #base_image="eoan-preinstalled-server-arm64+raspi3.img.xz"
 base_image_url="${base_url}/${base_image}"
 # This is the base name of the image we are creating.
-new_image="eoan-preinstalled-server-arm64+raspi4"
+new_image="${release}-preinstalled-server-arm64+raspi4"
 # Comment out the following if apt is throwing errors silently.
 # Note that these only work for the chroot commands.
 silence_apt_flags="-o Dpkg::Use-Pty=0 -qq < /dev/null > /dev/null "
@@ -29,7 +29,7 @@ echo $BASHPID > /flag/main
 mainPID=$BASHPID
 
 # Quick build shell exit script
-cat <<-EOF> /usr/bin/killme
+cat <<-EOF > /usr/bin/killme
 	#!/bin/bash
 	pkill -F /flag/main
 EOF

@@ -7,8 +7,9 @@ function usage {
     cat <<EOF 1>&2
 usage: $PROG [options...] SOURCEDIR_for_scripts
 Options:
-  -i IMAGE  Name of the docker image (including tag) to use as package build environment.
-  -o DIR    Destination directory to store packages to.
+  -i IMAGE      Name of the docker image (including tag) to use as package build environment.
+  -o DIR        Destination directory to store packages to.
+  -r RELEASE    Distribution release (Eoan or Bionic)
 EOF
     exit 1
 }
@@ -27,13 +28,16 @@ function abspath {
 
 [ "$#" -eq "0" ] && usage
 
-while getopts "i:o:h" opt; do
+while getopts "i:o:r:h" opt; do
     case $opt in
         i)
             image="$OPTARG"
             ;;
         o)
             outdir="$OPTARG"
+            ;;
+        r)
+            release="$OPTARG"
             ;;
         h)
             usage
@@ -47,8 +51,12 @@ done
 shift $(($OPTIND - 1))
 
 # This should be the image we want to modify.
-base_url="http://cdimage.ubuntu.com/ubuntu-server/daily-preinstalled/current/"
-base_image="eoan-preinstalled-server-arm64+raspi3.img.xz"
+if [ $release = "bionic" ]; then
+    base_url="http://cdimage.ubuntu.com/ubuntu-server/bionic/daily-preinstalled/current/"
+else
+    base_url="http://cdimage.ubuntu.com/ubuntu-server/daily-preinstalled/current/"
+fi
+base_image="${release}-preinstalled-server-arm64+raspi3.img.xz"
 base_image_url="${base_url}/${base_image}"
 cache_volume=rpi4-imagebuilder-cache
 
@@ -71,14 +79,20 @@ SYSTEM=`uname`
 # Check that mandatory parameters are valid
 [ !    "$outdir"        ] && fatal "output directory was not given (-o DIR)"
 [ ! -d "$outdir"        ] && fatal "output directory does not exist: $outdir"
-[ !    "${srcdir}"        ] && fatal "source directory not given"
+[ !    "${srcdir}"      ] && fatal "source directory not given"
 [ !    "$image"         ] && fatal "docker image name not given (-i IMAGE)"
+[ !    "$release"       ] && fatal "release name not given (-i RELEASE)"
+
+if [ $release = "bionic" ]; then
+    version="18.04"
+else
+    version="19.10"
+fi
 
 # Create Docker Image if it does not exist.
 echo "Creating Docker Image ${image} if it does not exist."
 docker inspect "${image}" > /dev/null 2>&1 || docker build -t \
-${image} -f Dockerfile-ubuntu-19.10 .
-
+${image} -f Dockerfile-ubuntu-${version} .
 
 # Needed for loopback to work inside container.
 #docker_args+="--cap-add=CAP_MKNOD --device-cgroup-rule='b 7:* rmw' "
@@ -237,6 +251,9 @@ docker_args+="-e base_url=${base_url} -e base_image=${base_image} "
 
 #Send in linux repo environment variables:
 docker_args+="-e kernel_branch=${kernel_branch} -e kernelgitrepo=${kernelgitrepo} "
+
+# Send in release version environment variabl:
+docker_args+="-e release=${release} "
 
 # Let XZ be disabled.
 [ -n "$NOXZ" ] && docker_args+="-e NOXZ=${NOXZ} "
