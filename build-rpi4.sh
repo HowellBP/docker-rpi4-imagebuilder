@@ -292,8 +292,9 @@ git_get () {
                     recreate_git $git_repo $local_path $git_branch
             fi
             # Is the requested branch the same as the local saved branch?
-            local local_branch=`git -C $src_cache/$local_path \
-            rev-parse --abbrev-ref HEAD` || local_branch=
+            local local_branch=
+            local local_branch=$(git -C $src_cache/$local_path \
+            rev-parse --abbrev-ref HEAD || true)
             # Set HEAD = master
             [[ "$local_branch" = "HEAD" ]] && local_branch="master"
             if [[ "$local_branch" != "$git_branch" ]]
@@ -657,25 +658,24 @@ kernel_debs () {
 startfunc
 
    # Don't remake debs if they already exist in output.
-   #arbitrary_wait
+   arbitrary_wait
    KERNEL_VERS=`cat /tmp/KERNEL_VERS`
    echo -e "Looking for cached $KERNEL_VERS kernel debs."
-   #ls "$apt_cache/linux-image-*${KERNEL_VERS}*"
-    for f in "$apt_cache/linux-image-*${KERNEL_VERS}*"; do
-     if [ -f "$f" ]
+    for f in $apt_cache/linux-image-*${KERNEL_VERS}*; do
+     if [[ -f $f ]]
      then
         echo -e "$f on cache volume. 😎\n"
-        echo 1 > /tmp/nodebs
+        echo "linux-image" >> /tmp/nodebs
      else
         rm -f /tmp/nodebs || true
     fi
     break
     done
-    for f in "$apt_cache/linux-headers-*${KERNEL_VERS}*"; do
-     if [ -f "$f" ]
+    for f in $apt_cache/linux-headers-*${KERNEL_VERS}*; do
+     if [[ -f $f ]]
      then
         echo -e "$f on cache volume. 😎\n"
-        echo 1> /tmp/nodebs
+        echo "linux-headers" >> /tmp/nodebs
      else
          rm -f /tmp/nodebs || true
      fi
@@ -683,8 +683,8 @@ startfunc
     done
     if [[ -e /tmp/nodebs ]]
     then
-    echo -e "Using existing $KERNEL_VERS debs from cache volume.\nNo \
-    kernel needs to be built."
+    echo -e "Using existing $KERNEL_VERS debs from cache volume.\n \
+    \rNo kernel needs to be built."
     cp $apt_cache/linux-image-*${KERNEL_VERS}*arm64.deb $workdir/
     cp $apt_cache/linux-headers-*${KERNEL_VERS}*arm64.deb $workdir/
     cp $workdir/*.deb /output/ 
@@ -1134,7 +1134,7 @@ startfunc
     umount -l /mnt/boot/firmware || (lsof +f -- /mnt/boot/firmware ; sleep 60 ; \
     umount -l /mnt/boot/firmware) || true
     #umount /mnt || (mount | grep /mnt)
-    e4defrag /mnt >/dev/null
+    e4defrag /mnt >/dev/null || true
     umount -l /mnt || (lsof +f -- /mnt ; sleep 60 ; umount /mnt) || true
     #guestunmount /mnt
 
