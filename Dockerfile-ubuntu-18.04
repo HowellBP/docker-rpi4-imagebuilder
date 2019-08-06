@@ -46,7 +46,7 @@ RUN set -ex \
                wget \
                xdelta3 \
                xxd \
-               xz-utils \         
+               xz-utils \
     && apt-get build-dep -y linux-image-raspi2 \
     && apt-get build-dep -y linux-image-4.15.0-55-generic \
     && apt-get upgrade -y \

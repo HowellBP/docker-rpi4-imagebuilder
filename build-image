@@ -28,7 +28,7 @@ function abspath {
 
 [ "$#" -eq "0" ] && usage
 
-while getopts "i:o:h" opt; do
+while getopts "i:o:r:h" opt; do
     case $opt in
         i)
             image="$OPTARG"
@@ -79,11 +79,9 @@ SYSTEM=`uname`
 # Check that mandatory parameters are valid
 [ !    "$outdir"        ] && fatal "output directory was not given (-o DIR)"
 [ ! -d "$outdir"        ] && fatal "output directory does not exist: $outdir"
-[ !    "${srcdir}"        ] && fatal "source directory not given"
+[ !    "${srcdir}"      ] && fatal "source directory not given"
 [ !    "$image"         ] && fatal "docker image name not given (-i IMAGE)"
-
-
-
+[ !    "$release"       ] && fatal "release name not given (-i RELEASE)"
 
 # Needed for loopback to work inside container.
 #docker_args+="--cap-add=CAP_MKNOD --device-cgroup-rule='b 7:* rmw' "
