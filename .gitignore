@@ -2,10 +2,6 @@
 .DS_Store
 *.sh~
 *.10~
-build-image~
-build-image~
-build-image~
-build-image~
-build-image~
-build-image~
-build-image~
+*-preinstalled-*
+build.cid
+output/
