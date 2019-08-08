@@ -8,25 +8,27 @@ function usage {
 usage: $PROG [options...] SOURCEDIR_for_scripts
 Options:
   -i IMAGE      Name of the docker image (including tag) to use as package build environment.
+                Default: docker-rpi4-imagebuilder:19.10 .
   -o DIR        Destination directory to store packages to.
-  -r RELEASE    Distribution release (Eoan or Bionic)
+                Default: "output".
+  -r RELEASE    Distribution release (eoan or bionic)
+                Default: "eoan".
 EOF
     exit 1
 }
 
-function fatal {
-    echo "$PROG: ${1:-"Unknown Error"}" 1>&2
-    exit 1
-}
+# function fatal {
+#     echo "$PROG: ${1:-"Unknown Error"}" 1>&2
+#     exit 1
+# }
 
 function abspath {
     echo $(cd "$1" && pwd)
 }
 
-
 ###########################################################################
 
-[ "$#" -eq "0" ] && usage
+#[ "$#" -eq "0" ] && usage
 
 while getopts "i:o:r:h" opt; do
     case $opt in
@@ -55,17 +57,26 @@ if [ $release = "bionic" ]; then
     base_url="http://cdimage.ubuntu.com/ubuntu-server/bionic/daily-preinstalled/current/"
 else
     base_url="http://cdimage.ubuntu.com/ubuntu-server/daily-preinstalled/current/"
+    release="eoan"
 fi
 base_image="${release}-preinstalled-server-arm64+raspi3.img.xz"
 base_image_url="${base_url}/${base_image}"
 cache_volume=rpi4-imagebuilder-cache
+outdir="${output:-output}"
+defaultimage="docker-rpi4-imagebuilder:19.10"
 
 # This is the linux version we want to use:
 #kernel_branch=rpi-4.19.y
 kernel_branch="${kernel_branch:-rpi-4.19.y}"
 kernelgitrepo="https://github.com/raspberrypi/linux.git"
 
-srcdir=$1
+srcdir=${PROG_DIR}
+srcdir="${srcdir:-.}"
+
+
+image="${image:-${defaultimage}}"
+
+
 #docker_args="-it "
 # The bash script & copy log if failure setup doesn't work without the "-dt" docker argument.
 docker_args="-dt "
@@ -75,13 +86,15 @@ docker_args="-dt "
 # Are we mac or are we linux?
 SYSTEM=`uname`
 
+# Just make kerneldebs?
+[ -n "$JUSTDEBS" ] && docker_args+="-e JUSTDEBS=${JUSTDEBS} "
 
 # Check that mandatory parameters are valid
-[ !    "$outdir"        ] && fatal "output directory was not given (-o DIR)"
+#[ !    "$outdir"        ] && fatal "output directory was not given (-o DIR)"
 [ ! -d "$outdir"        ] && fatal "output directory does not exist: $outdir"
-[ !    "${srcdir}"      ] && fatal "source directory not given"
-[ !    "$image"         ] && fatal "docker image name not given (-i IMAGE)"
-[ !    "$release"       ] && fatal "release name not given (-i RELEASE)"
+#[ !    "${srcdir}"      ] && fatal "source directory not given"
+#[ !    "$image"         ] && fatal "docker image name not given (-i IMAGE)"
+#[ !    "$release"       ] && fatal "release name not given (-i RELEASE)"
 
 if [ $release = "bionic" ]; then
     version="18.04"
@@ -210,15 +223,15 @@ check_for_current_image () {
 }
 
 
-if [ ! -f $(abspath ${srcdir})/$base_image ]; then
+if [ ! -f $(abspath ${srcdir})/$base_image ] && [ ! $JUSTDEBS ]; then
         download_base_image
     else
-        check_for_current_image
+        [ ! $JUSTDEBS ] && check_for_current_image
 fi
 
 
 
-if [ ! -f "$(abspath ${srcdir})/${base_image%.xz}" ]
+if [ ! -f "$(abspath ${srcdir})/${base_image%.xz}" ] && [ ! $JUSTDEBS ]
     then 
         cd $(abspath ${srcdir})
         echo "* Extracting $(abspath ${srcdir})/${base_image%.xz} ."
@@ -231,7 +244,8 @@ if [ ! -f "$(abspath ${srcdir})/${base_image%.xz}" ]
     echo "* Base image already extracted."
 fi
 
-docker_args+="-v $(abspath ${srcdir})/$base_image:/$base_image "
+
+[ ! $JUSTDEBS ] && docker_args+="-v $(abspath ${srcdir})/$base_image:/$base_image "
 
 # For ccache
 #docker_args+="-e CCACHE_DIR=/ccache --volumes-from ccache -v ccache:/ccache "
@@ -247,7 +261,7 @@ docker_args+="-e apt_cache=/cache/apt_cache "
 docker_args+="-e workdir=/build/source "
 
 # Send in base image environment variables:
-docker_args+="-e base_url=${base_url} -e base_image=${base_image} "
+[ ! $JUSTDEBS ] && docker_args+="-e base_url=${base_url} -e base_image=${base_image} "
 
 #Send in linux repo environment variables:
 docker_args+="-e kernel_branch=${kernel_branch} -e kernelgitrepo=${kernelgitrepo} "
@@ -255,8 +269,8 @@ docker_args+="-e kernel_branch=${kernel_branch} -e kernelgitrepo=${kernelgitrepo
 # Send in release version environment variabl:
 docker_args+="-e release=${release} "
 
-# Let XZ be disabled.
-[ -n "$NOXZ" ] && docker_args+="-e NOXZ=${NOXZ} "
+# Let XZ be disabled by default.
+[ -n "$XZ" ] && docker_args+="-e XZ=${XZ} "
 
 # Is an email local variable set?
 [ -n "$EMAIL" ] && docker_args+="-e EMAIL=${EMAIL} "
@@ -264,8 +278,8 @@ docker_args+="-e release=${release} "
 # Is a XDELTA local variable set? (Can not use XDELTA since XDELTA uses that itself.)
 [ -n "$DELTA" ] && docker_args+="-e DELTA=${DELTA} "
 
-# Just make kerneldebs?
-[ -n "$JUSTDEBS" ] && docker_args+="-e JUSTDEBS=${JUSTDEBS} "
+# DEBUG?
+[ -n "$DEBUG" ] && docker_args+="-e DEBUG=${DEBUG} "
 
 # Send in columns for display.
 shopt -s checkwinsize 

@@ -19,8 +19,8 @@ new_image="${release}-preinstalled-server-arm64+raspi4"
 # Note that these only work for the chroot commands.
 silence_apt_flags="-o Dpkg::Use-Pty=0 -qq < /dev/null > /dev/null "
 silence_apt_update_flags="-o Dpkg::Use-Pty=0 < /dev/null > /dev/null "
-image_compressors=("lz4" "xz")
-[[ $NOXZ ]] && image_compressors=("lz4")
+image_compressors=("lz4")
+[[ $XZ ]] && image_compressors=("lz4" "xz")
 
 # Let's see if the inotify issues go away by moving function status
 #  files onto /build.
@@ -90,57 +90,23 @@ mkdir -p $apt_cache/partial
 
 #env >> /output/environment
 
+echo "Starting local container software installs."
+[[ ! $JUSTDEBS ]] && apt-get -o dir::cache::archives=$apt_cache install lsof -y &>> /tmp/main.install.log 
+[[ ! $JUSTDEBS ]] && apt-get -o dir::cache::archives=$apt_cache install xdelta3 -y &>> /tmp/main.install.log 
+[[ ! $JUSTDEBS ]] && apt-get -o dir::cache::archives=$apt_cache install e2fsprogs -y &>> /tmp/main.install.log 
+[[ ! $JUSTDEBS ]] && apt-get -o dir::cache::archives=$apt_cache install qemu-user-static -y &>> /tmp/main.install.log 
+[[ ! $JUSTDEBS ]] && apt-get -o dir::cache::archives=$apt_cache install dosfstools -y &>> /tmp/main.install.log 
+[[ ! $JUSTDEBS ]] && apt-get -o dir::cache::archives=$apt_cache install libc6-arm64-cross -y &>> /tmp/main.install.log 
+[[ ! $JUSTDEBS ]] && apt-get -o dir::cache::archives=$apt_cache install pv -y &>> /tmp/main.install.log 
+[[ ! $JUSTDEBS ]] && apt-get -o dir::cache::archives=$apt_cache install u-boot-tools -y &>> /tmp/main.install.log 
+apt-get -o dir::cache::archives=$apt_cache install vim -y &>> /tmp/main.install.log 
+echo -e "Performing cache volume apt autoclean.\n\r"
+apt-get -o dir::cache::archives=$apt_cache autoclean -y -qq &>> /tmp/main.install.log 
 
-apt-get -o dir::cache::archives=$apt_cache install lsof xdelta3 vim \
-e2fsprogs qemu-user-static dosfstools \
-libc6-arm64-cross pv u-boot-tools -qq 2>/dev/null
+#apt-get -o dir::cache::archives=$apt_cache install xdelta3 vim \
+#e2fsprogs qemu-user-static dosfstools \
+#libc6-arm64-cross pv u-boot-tools -qq 2>/dev/null
 
-# Utility script
-# Apt concurrency manager wrapper via
-# https://askubuntu.com/posts/375031/revisions
-cat <<'EOF'> /usr/bin/chroot-apt-wrapper
-#!/bin/bash
-
-i=0
-tput sc
-while fuser /mnt/var/lib/dpkg/lock >/dev/null 2>&1 ; do
-    case $(($i % 4)) in
-        0 ) j="-" ;;
-        1 ) j="\\" ;;
-        2 ) j="|" ;;
-        3 ) j="/" ;;
-    esac
-    tput rc
-    echo -en "\r[$j] Waiting for other apt instances to finish..." 
-    sleep 0.5
-    ((i=i+1))
-done 
-
-/usr/bin/apt-get "$@"
-EOF
-chmod +x /usr/bin/chroot-apt-wrapper
-
-cat <<'EOF'> /usr/bin/chroot-dpkg-wrapper
-#!/bin/bash
-
-i=0
-tput sc
-while fuser /mnt/var/lib/dpkg/lock >/dev/null 2>&1 ; do
-    case $(($i % 4)) in
-        0 ) j="-" ;;
-        1 ) j="\\" ;;
-        2 ) j="|" ;;
-        3 ) j="/" ;;
-    esac
-    tput rc
-    echo -en "\r[$j] Waiting for other dpkg instances to finish..." 
-    sleep 0.5
-    ((i=i+1))
-done 
-
-/usr/bin/dpkg "$@"
-EOF
-chmod +x /usr/bin/chroot-dpkg-wrapper
 
 
 
@@ -192,14 +158,16 @@ endfunc
 
 
 waitfor () {
+    local proc_name=${FUNCNAME[1]}
+    [[ -z ${proc_name} ]] && proc_name=main
     local waitforit
     # waitforit file is written in the function "endfunc"
-    touch /flag/wait.${FUNCNAME[1]}_for_${1}
-    printf "%${COLUMNS}s\r\n\r" "${FUNCNAME[1]} waits for: ${1} [/] "
+    touch /flag/wait.${proc_name}_for_${1}
+    printf "%${COLUMNS}s\r\n\r" "${proc_name} waits for: ${1} [/] "
     local start_timeout=10000
     wait_file "/flag/done.${1}" $start_timeout
-    printf "%${COLUMNS}s\r\n\r" "${FUNCNAME[1]} noticed: ${1} [X] " && \
-    rm -f /flag/wait.${FUNCNAME[1]}_for_${1}
+    printf "%${COLUMNS}s\r\n\r" "${proc_name} noticed: ${1} [X] " && \
+    rm -f /flag/wait.${proc_name}_for_${1}
 }
 
 waitforstart () {
@@ -209,22 +177,26 @@ waitforstart () {
 
 
 startfunc () {
-    echo $BASHPID > /flag/start.${FUNCNAME[1]}
-    [[ ! -e /flag/start.${FUNCNAME[1]} ]] && touch /flag/start.${FUNCNAME[1]} || true
-    if [ ! "${FUNCNAME[1]}" == "spinnerwait" ] 
-        then printf "%${COLUMNS}s\n" "Started: ${FUNCNAME[1]} [ ] "
+    local proc_name=${FUNCNAME[1]}
+    [[ -z ${proc_name} ]] && proc_name=main
+    echo $BASHPID > /flag/start.${proc_name}
+    [[ ! -e /flag/start.${proc_name} ]] && touch /flag/start.${proc_name} || true
+    if [ ! "${proc_name}" == "spinnerwait" ] 
+        then printf "%${COLUMNS}s\n" "Started: ${proc_name} [ ] "
     fi
     
 }
 
 endfunc () {
-    [[ -f /tmp/${FUNCNAME[1]}.compile.log ]] && rm /tmp/${FUNCNAME[1]}.compile.log || true
-    [[ -f /tmp/${FUNCNAME[1]}.install.log ]] && rm /tmp/${FUNCNAME[1]}.install.log || true
-    [[ -f /tmp/${FUNCNAME[1]}.git.log ]] && rm /tmp/${FUNCNAME[1]}.git.log || true
-    [[ -f /tmp/${FUNCNAME[1]}.cleanup.log ]] && rm /tmp/${FUNCNAME[1]}.cleanup.log || true
-    mv -f /flag/start.${FUNCNAME[1]} /flag/done.${FUNCNAME[1]}
-    if [ ! "${FUNCNAME[1]}" == "spinnerwait" ]
-        then printf "%${COLUMNS}s\n" "Done: ${FUNCNAME[1]} [X] "
+    local proc_name=${FUNCNAME[1]}
+    [[ -z ${proc_name} ]] && proc_name=main
+   [[ ! $DEBUG ]] && [[ -f /tmp/${proc_name}.compile.log ]] && rm /tmp/${proc_name}.compile.log || true
+   [[ ! $DEBUG ]] && [[ -f /tmp/${proc_name}.install.log ]] && rm /tmp/${proc_name}.install.log || true
+   [[ ! $DEBUG ]] && [[ -f /tmp/${proc_name}.git.log ]] && rm /tmp/${proc_name}.git.log || true
+   [[ ! $DEBUG ]] && [[ -f /tmp/${proc_name}.cleanup.log ]] && rm /tmp/${proc_name}.cleanup.log || true
+    mv -f /flag/start.${proc_name} /flag/done.${proc_name}
+    if [ ! "${proc_name}" == "spinnerwait" ]
+        then printf "%${COLUMNS}s\n" "Done: ${proc_name} [X] "
     fi
 }
 
@@ -271,6 +243,8 @@ arbitrary_wait () {
 # }
 
 git_get () {
+    local proc_name=${FUNCNAME[1]}
+    [[ -z ${proc_name} ]] && proc_name=main
     local git_repo="$1"
     local local_path="$2"
     local git_branch="$3"
@@ -285,7 +259,7 @@ git_get () {
     local git_flags=" --quiet --depth=1 "
     local clone_flags=" $git_repo $git_extra_flags "
     local pull_flags="origin/$git_branch"
-    #echo -e "${FUNCNAME[1]}\nremote hash: $remote_git\nlocal hash: $local_git"
+    #echo -e "${proc_name}\nremote hash: $remote_git\nlocal hash: $local_git"
       
     if [ ! "$remote_git" = "$local_git" ]
         then
@@ -302,31 +276,32 @@ git_get () {
             [[ "$local_branch" = "HEAD" ]] && local_branch="master"
             if [[ "$local_branch" != "$git_branch" ]]
                 then 
-                    echo "Branch mismatch!"
-                    # Be safe.
+                    echo "Kernel git branch mismatch!"
+                    printf "%${COLUMNS}s\n" "${proc_name} refreshing cache files from git."
                     cd $src_cache/$local_path
                     git checkout $git_branch || recreate_git $git_repo \
                     $local_path $git_branch
                 else
-                echo -e "${FUNCNAME[1]}\nremote hash: $remote_git\nlocal hash: \
-            BRANCH SWITCH"
+                    echo -e "${proc_name}\nremote hash: \
+                    $remote_git\nlocal hash:$local_git\n"
+                    printf "%${COLUMNS}s\n" "${proc_name} refreshing cache files from git."
             fi
-            printf "%${COLUMNS}s\n"  "${FUNCNAME[1]} refreshing cache files from git."
+            
             
             # sync to local branch
             cd $src_cache/$local_path
-            git fetch --all $git_flags &>> /tmp/${FUNCNAME[1]}.git.log || true
-            git reset --hard $pull_flags --quiet 2>> /tmp/${FUNCNAME[1]}.git.log
+            git fetch --all $git_flags &>> /tmp/${proc_name}.git.log || true
+            git reset --hard $pull_flags --quiet 2>> /tmp/${proc_name}.git.log
         else
-            echo -e "${FUNCNAME[1]}\nremote hash: $remote_git\nlocal hash: \
-            $local_git\n\r${FUNCNAME[1]} getting files from cache volume. 😎\n"
+            echo -e "${proc_name}\nremote hash: $remote_git\nlocal hash: \
+            $local_git\n\r${proc_name} getting files from cache volume. 😎\n"
     fi
     cd $src_cache/$local_path 
     last_commit=$(git log --graph \
     --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) \
     %C(bold blue)<%an>%Creset' --abbrev-commit -2 \
     --quiet 2> /dev/null)
-    echo -e "*${FUNCNAME[1]} Last Commits:\n$last_commit\n"
+    echo -e "*${proc_name} Last Commits:\n$last_commit\n"
     rsync -a $src_cache/$local_path $workdir/
 }
 
@@ -346,6 +321,108 @@ recreate_git () {
 }
 
 # Main functions
+
+utility_scripts () {
+startfunc
+# Apt concurrency manager wrapper via
+# https://askubuntu.com/posts/375031/revisions
+cat <<'EOF'> /usr/bin/chroot-apt-wrapper
+#!/bin/bash
+
+i=0
+tput sc
+while fuser /mnt/var/lib/dpkg/lock >/dev/null 2>&1 ; do
+    case $(($i % 4)) in
+        0 ) j="-" ;;
+        1 ) j="\\" ;;
+        2 ) j="|" ;;
+        3 ) j="/" ;;
+    esac
+    tput rc
+    echo -en "\r[$j] Waiting for other apt instances to finish..." 
+    sleep 0.5
+    ((i=i+1))
+done 
+
+/usr/bin/apt-get "$@"
+EOF
+chmod +x /usr/bin/chroot-apt-wrapper
+
+cat <<'EOF'> /usr/bin/chroot-dpkg-wrapper
+#!/bin/bash
+
+i=0
+tput sc
+while fuser /mnt/var/lib/dpkg/lock >/dev/null 2>&1 ; do
+    case $(($i % 4)) in
+        0 ) j="-" ;;
+        1 ) j="\\" ;;
+        2 ) j="|" ;;
+        3 ) j="/" ;;
+    esac
+    tput rc
+    echo -en "\r[$j] Waiting for other dpkg instances to finish..." 
+    sleep 0.5
+    ((i=i+1))
+done 
+
+/usr/bin/dpkg "$@"
+EOF
+chmod +x /usr/bin/chroot-dpkg-wrapper
+
+waitfor "image_mount"
+    # Apt concurrency manager wrapper via
+    # https://askubuntu.com/posts/375031/revisions
+    mkdir -p /mnt/usr/local/bin
+    cat <<'EOF'> /mnt/usr/local/bin/chroot-apt-wrapper
+#!/bin/bash
+
+i=0
+tput sc
+while fuser /var/lib/dpkg/lock >/dev/null 2>&1 ; do
+    case $(($i % 4)) in
+        0 ) j="-" ;;
+        1 ) j="\\" ;;
+        2 ) j="|" ;;
+        3 ) j="/" ;;
+    esac
+    tput rc
+    echo -en "\r[$j] Waiting for other apt instances to finish..." 
+    sleep 0.5
+    ((i=i+1))
+done 
+
+/usr/bin/apt-get "$@"
+EOF
+    chmod +x /mnt/usr/local/bin/chroot-apt-wrapper
+
+cat <<'EOF'> /mnt/usr/local/bin/chroot-dpkg-wrapper
+#!/bin/bash
+
+i=0
+tput sc
+while fuser /var/lib/dpkg/lock >/dev/null 2>&1 ; do
+    case $(($i % 4)) in
+        0 ) j="-" ;;
+        1 ) j="\\" ;;
+        2 ) j="|" ;;
+        3 ) j="/" ;;
+    esac
+    tput rc
+    echo -en "\r[$j] Waiting for other dpkg instances to finish..." 
+    sleep 0.5
+    ((i=i+1))
+done 
+
+/usr/bin/dpkg "$@"
+EOF
+chmod +x /mnt/usr/local/bin/chroot-dpkg-wrapper
+
+endfunc
+}
+
+
+
 
 download_base_image () {
 startfunc
@@ -456,55 +533,6 @@ startfunc
     rsync -avh --devices --specials /run/systemd/resolve /mnt/run/systemd > /dev/null
     
     
-    # Apt concurrency manager wrapper via
-    # https://askubuntu.com/posts/375031/revisions
-    mkdir -p /mnt/usr/local/bin
-    cat <<'EOF'> /mnt/usr/local/bin/chroot-apt-wrapper
-#!/bin/bash
-
-i=0
-tput sc
-while fuser /var/lib/dpkg/lock >/dev/null 2>&1 ; do
-    case $(($i % 4)) in
-        0 ) j="-" ;;
-        1 ) j="\\" ;;
-        2 ) j="|" ;;
-        3 ) j="/" ;;
-    esac
-    tput rc
-    echo -en "\r[$j] Waiting for other apt instances to finish..." 
-    sleep 0.5
-    ((i=i+1))
-done 
-
-/usr/bin/apt-get "$@"
-EOF
-    chmod +x /mnt/usr/local/bin/chroot-apt-wrapper
-
-cat <<'EOF'> /mnt/usr/local/bin/chroot-dpkg-wrapper
-#!/bin/bash
-
-i=0
-tput sc
-while fuser /var/lib/dpkg/lock >/dev/null 2>&1 ; do
-    case $(($i % 4)) in
-        0 ) j="-" ;;
-        1 ) j="\\" ;;
-        2 ) j="|" ;;
-        3 ) j="/" ;;
-    esac
-    tput rc
-    echo -en "\r[$j] Waiting for other dpkg instances to finish..." 
-    sleep 0.5
-    ((i=i+1))
-done 
-
-/usr/bin/dpkg "$@"
-EOF
-chmod +x /mnt/usr/local/bin/chroot-dpkg-wrapper
-
-
-
     mkdir -p /mnt/build
     mount -o bind /build /mnt/build
     echo "* ARM64 chroot setup is complete."  
@@ -513,6 +541,7 @@ endfunc
 
 image_apt_installs () {
         waitfor "arm64_chroot_setup"
+        waitfor "utility_scripts"
 startfunc    
     echo "* Starting apt update."
     chroot-apt-wrapper -o Dir=/mnt -o APT::Architecture=arm64 \
@@ -609,9 +638,9 @@ startfunc
     cd $workdir/rpi-linux
         # Get rid of dirty localversion as per https://stackoverflow.com/questions/25090803/linux-kernel-kernel-version-string-appended-with-either-or-dirty
     #touch $workdir/rpi-linux/.scmversion
-    sed -i \
-     "s/scripts\/package/scripts\/package\\\|Makefile\\\|scripts\/setlocalversion/g" \
-     $workdir/rpi-linux/scripts/setlocalversion
+    #sed -i \
+    # "s/scripts\/package/scripts\/package\\\|Makefile\\\|scripts\/setlocalversion/g" \
+    # $workdir/rpi-linux/scripts/setlocalversion
 
     cd $workdir/rpi-linux
     git update-index --refresh &>> /tmp/${FUNCNAME[0]}.compile.log || true
@@ -644,6 +673,7 @@ startfunc
     # This is needed to enable squashfs - which snapd requires, since otherwise
     # login at boot fails on the ubuntu server image.
     # This also enables the BPF syscall for systemd-journald firewalling
+    [[ -e /source-ro/conform_config-${kernel_branch}.sh ]] && { /source-ro/conform_config-${kernel_branch}.sh ;true; } || \
     /source-ro/conform_config.sh
     yes "" | make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
     O=$workdir/kernel-build/ \
@@ -690,27 +720,6 @@ startfunc
     else
         rm -f /tmp/nodebs || true
     fi
-#    echo -e "Looking for cached $KERNEL_VERS kernel debs."
-#     for f in $apt_cache/linux-image-*${KERNEL_VERS}*; do
-#      if [[ -f $f ]]
-#      then
-#         echo -e "$(basename $f) on cache volume. 😎\n"
-#         echo "linux-image" >> /tmp/nodebs
-#      else
-#         rm -f /tmp/nodebs || true
-#     fi
-#     break
-#     done
-#     for f in $apt_cache/linux-headers-*${KERNEL_VERS}*; do
-#      if [[ -f $f ]]
-#      then
-#         echo -e "$(basename $f) on cache volume. 😎\n"
-#         echo "linux-headers" >> /tmp/nodebs
-#      else
-#          rm -f /tmp/nodebs || true
-#      fi
-#      break
-#     done
     if [[ -e /tmp/nodebs ]]
     then
     echo -e "Using existing $KERNEL_VERS debs from cache volume.\n \
@@ -1043,7 +1052,8 @@ startfunc
 	# If kernel8.img does not look like u-boot, then assume u-boot
 	# is not being used.
 	file /boot/firmware/kernel8.img | grep -vq "PCX" && \
-	gunzip -c -f ${KERNEL_INSTALLED_PATH} > /boot/firmware/kernel8.img
+	gunzip -c -f ${KERNEL_INSTALLED_PATH} > /boot/firmware/kernel8.img && \
+	cp /boot/firmware/kernel8.img /boot/firmware/kernel8.img.nouboot
 	
 	exit 0
 EOF
@@ -1229,7 +1239,13 @@ endfunc
 }
 
 export_log () {
+if [[ ! $JUSTDEBS ]];
+    then
     waitfor "compressed_image_export"
+    else
+    waitfor "kernel_debs"
+fi
+
 startfunc
     KERNEL_VERS=$(cat /tmp/KERNEL_VERS)
     echo "* Build log at: build-log-$KERNEL_VERS_${now}.log"
@@ -1244,10 +1260,10 @@ endfunc
 # The shell command would be something like this:
 # docker exec -it `cat ~/docker-rpi4-imagebuilder/build.cid` /bin/bash
 # Note that this flag is looked for in the image_and_chroot_cleanup function
-[[ ! $JUSTDEBS ]] && touch /flag/done.ok_to_umount_image_after_build
+touch /flag/done.ok_to_umount_image_after_build
 
 # For debugging.
-[[ ! $JUSTDEBS ]] && touch /flag/done.ok_to_continue_after_mount_image
+touch /flag/done.ok_to_continue_after_mount_image
 
 # Arbitrary pause for debugging.
 touch /flag/done.ok_to_continue_after_here
@@ -1264,6 +1280,7 @@ touch /flag/done.ok_to_exit_container_after_build
 # So we will work around it.
 #inotify_touch_events &
 
+[[ ! $JUSTDEBS ]] && utility_scripts &
 [[ ! $JUSTDEBS ]] && base_image_check
 [[ ! $JUSTDEBS ]] && image_extract &
 [[ ! $JUSTDEBS ]] && image_mount &
