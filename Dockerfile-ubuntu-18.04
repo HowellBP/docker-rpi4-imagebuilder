@@ -24,6 +24,7 @@ RUN set -ex \
                git \
                kpartx \
                libgpm2 \
+               liblz4-tool \
                lsof \
                golang-github-pierrec-lz4-dev \
                libc6-arm64-cross \

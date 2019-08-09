@@ -981,7 +981,7 @@ startfunc
     #-d /etc/flash-kernel/bootscript/bootscr.rpi \
     #/boot/firmware/boot.scr" &>> /tmp/${FUNCNAME[0]}.compile.log
     mkimage -A arm64 -O linux -T script \
-    -d /mnt/etc/flash-kernel/bootscript/bootscr.rpi \
+    -d /mnt/etc/flash-kernel/bootscript/bootscr.rpi3 \
     /mnt/boot/firmware/boot.scr &>> /tmp/${FUNCNAME[0]}.compile.log
 
 endfunc
@@ -1094,7 +1094,7 @@ EOF
 	Boot-Kernel-Path: /boot/firmware/vmlinuz
 	Boot-Initrd-Path: /boot/firmware/initrd.img
 	Boot-Script-Path: /boot/firmware/boot.scr
-	U-Boot-Script-Name: bootscr.rpi
+	U-Boot-Script-Name: bootscr.rpi3
 	Required-Packages: u-boot-tools
 	# XXX we should copy the entire overlay dtbs dir too
 	# Note as of July 31, 2019 the Ubuntu u-boot-rpi does 
