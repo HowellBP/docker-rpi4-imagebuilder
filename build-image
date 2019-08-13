@@ -66,8 +66,8 @@ outdir="${output:-output}"
 defaultimage="docker-rpi4-imagebuilder:19.10"
 
 # This is the linux version we want to use:
-#kernel_branch=rpi-4.19.y
-kernel_branch="${kernel_branch:-rpi-4.19.y}"
+kernel_branch=rpi-4.19.y
+#z≈kernel_branch="${kernel_branch:-rpi-4.19.y}"
 kernelgitrepo="https://github.com/raspberrypi/linux.git"
 
 srcdir=${PROG_DIR}
@@ -236,9 +236,9 @@ if [ ! -f "$(abspath ${srcdir})/${base_image%.xz}" ] && [ -n "$BUILDNATIVE" -o !
         cd $(abspath ${srcdir})
         echo "* Extracting $(abspath ${srcdir})/${base_image%.xz} ."
         if [ "$(which xz)" ]; then
-            xz -vdk $(abspath ${srcdir})/${base_image}
+            xz -vdk -T 0 $(abspath ${srcdir})/${base_image}
         else
-            linux_cmd "xz -vdk ${base_image}"
+            linux_cmd "xz -vdk -T 0 ${base_image}"
         fi
     else
     echo "* Base image already extracted."

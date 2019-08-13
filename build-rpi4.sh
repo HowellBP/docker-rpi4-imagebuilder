@@ -5,7 +5,7 @@
 # mounted as docker volumes to allow files to be exchanged between the host and 
 # the container.
 
-#kernel_branch=rpi-4.19.y
+kernel_branch=rpi-4.19.y
 #kernelgitrepo="https://github.com/raspberrypi/linux.git"
 #branch=bcm2711-initial-v5.2
 #kernelgitrepo="https://github.com/lategoodbye/rpi-zero.git"
@@ -617,7 +617,9 @@ endfunc
 }
 
 kernelbuild_setup () {
+    echo $(date) "++++ KERNEL BUILD GIT ++++"
     git_get "$kernelgitrepo" "rpi-linux" "$kernel_branch"
+    echo $(date) "++++ KERNEL BUILD GIT ++++"
     majorversion=$(grep VERSION $src_cache/rpi-linux/Makefile | \
     head -1 | awk -F ' = ' '{print $2}')
     patchlevel=$(grep PATCHLEVEL $src_cache/rpi-linux/Makefile | \
@@ -676,8 +678,11 @@ startfunc
     # This is needed to enable squashfs - which snapd requires, since otherwise
     # login at boot fails on the ubuntu server image.
     # This also enables the BPF syscall for systemd-journald firewalling
-    [[ -e /source-ro/conform_config-${kernel_branch}.sh ]] && { /source-ro/conform_config-${kernel_branch}.sh ;true; } || \
-    /source-ro/conform_config.sh
+    echo $(date) "++++ CONFORM CONFIG ++++"
+    [[ -e /source-ro/conform_config-${kernel_branch}.sh ]] && { bash -x /source-ro/conform_config-${kernel_branch}.sh ;true; } || \
+    bash -x /source-ro/conform_config.sh
+    echo $(date) "++++ CONFORM CONFIG ++++"
+    echo $(date) "++++ KERNEL BUILD START ++++"
     yes "" | make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
     O=$workdir/kernel-build/ \
     olddefconfig &>> /tmp/${FUNCNAME[0]}.compile.log
@@ -700,6 +705,7 @@ startfunc
 
     echo $debcmd
     $debcmd &>> /tmp/${FUNCNAME[0]}.compile.log
+    echo $(date) "++++ KERNEL BUILD END ++++"
     
 endfunc
 }

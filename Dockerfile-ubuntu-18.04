@@ -26,7 +26,6 @@ RUN set -ex \
                libgpm2 \
                liblz4-tool \
                lsof \
-               golang-github-pierrec-lz4-dev \
                libc6-arm64-cross \
                libelf-dev \
                libncurses-dev \
