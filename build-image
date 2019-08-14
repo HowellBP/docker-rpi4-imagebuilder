@@ -39,7 +39,7 @@ while getopts "i:o:r:h" opt; do
             outdir="$OPTARG"
             ;;
         r)
-            release="$OPTARG"
+            base_dist="$OPTARG"
             ;;
         h)
             usage
@@ -53,17 +53,21 @@ done
 shift $(($OPTIND - 1))
 
 # This should be the image we want to modify.
-if [ $release = "bionic" ]; then
+default_base_dist="eoan"
+defaultimage="docker-rpi4-imagebuilder:19.10"
+
+base_dist="${base_dist:-${default_base_dist}}"
+
+if [ "$base_dist" == "bionic" ]; then
     base_url="http://cdimage.ubuntu.com/ubuntu-server/bionic/daily-preinstalled/current/"
-else
+    else
     base_url="http://cdimage.ubuntu.com/ubuntu-server/daily-preinstalled/current/"
-    release="eoan"
 fi
-base_image="${release}-preinstalled-server-arm64+raspi3.img.xz"
+
+base_image="${base_dist}-preinstalled-server-arm64+raspi3.img.xz"
 base_image_url="${base_url}/${base_image}"
 cache_volume=rpi4-imagebuilder-cache
 outdir="${output:-output}"
-defaultimage="docker-rpi4-imagebuilder:19.10"
 
 # This is the linux version we want to use:
 #kernel_branch=rpi-4.19.y
@@ -92,18 +96,16 @@ SYSTEM=`uname`
 [ ! -d "$outdir"        ] && fatal "output directory does not exist: $outdir"
 #[ !    "${srcdir}"      ] && fatal "source directory not given"
 #[ !    "$image"         ] && fatal "docker image name not given (-i IMAGE)"
-#[ !    "$release"       ] && fatal "release name not given (-i RELEASE)"
-
-if [ $release = "bionic" ]; then
-    version="18.04"
-else
-    version="19.10"
-fi
 
 # Create Docker Image if it does not exist.
 echo "Creating Docker Image ${image} if it does not exist."
-docker inspect "${image}" > /dev/null 2>&1 || docker build -t \
-${image} -f Dockerfile-ubuntu-${version} .
+if [ ! $(docker inspect "${image}" > /dev/null 2>&1 ) ]; then
+    if [ "$base_dist" == "bionic" ]; then
+    docker build -t ${image} -f Dockerfile-ubuntu-18.04 .
+    else
+    docker build -t ${image} -f Dockerfile-ubuntu-19.10 .
+    fi
+fi
 
 # Needed for loopback to work inside container.
 #docker_args+="--cap-add=CAP_MKNOD --device-cgroup-rule='b 7:* rmw' "
@@ -259,13 +261,10 @@ docker_args+="-e apt_cache=/cache/apt_cache "
 docker_args+="-e workdir=/build/source "
 
 # Send in base image environment variables:
-[ ! $JUSTDEBS ] && docker_args+="-e base_url=${base_url} -e base_image=${base_image} "
+[ -n "$BUILDNATIVE" -o ! -n "$JUSTDEBS" ] && docker_args+="-e base_url=${base_url} -e base_image=${base_image} -e base_dist=${base_dist} "
 
 #Send in linux repo environment variables:
 docker_args+="-e kernel_branch=${kernel_branch} -e kernelgitrepo=${kernelgitrepo} "
-
-# Send in release version environment variable:
-docker_args+="-e release=${release} "
 
 # Let XZ be disabled by default.
 [ -n "$XZ" ] && docker_args+="-e XZ=${XZ} "
@@ -278,6 +277,9 @@ docker_args+="-e release=${release} "
 
 # DEBUG?
 [ -n "$DEBUG" ] && docker_args+="-e DEBUG=${DEBUG} "
+
+# Is the build set to be done in a native chroot?
+[ -n "$BUILDNATIVE" ] && docker_args+="-e BUILDNATIVE=${BUILDNATIVE} "
 
 # Should we enable the arbitrary wait flag?
 [ -n "$ARBITRARY_WAIT" ] && docker_args+="-e ARBITRARY_WAIT=${ARBITRARY_WAIT} "

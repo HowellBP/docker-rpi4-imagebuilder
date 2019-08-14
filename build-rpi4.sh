@@ -11,10 +11,10 @@
 #kernelgitrepo="https://github.com/lategoodbye/rpi-zero.git"
 # This should be the image we want to modify.
 #base_url="http://cdimage.ubuntu.com/ubuntu-server/daily-preinstalled/current/"
-#base_image="eoan-preinstalled-server-arm64+raspi3.img.xz"
+#base_image="${base_dist}-preinstalled-server-arm64+raspi3.img.xz"
 base_image_url="${base_url}/${base_image}"
 # This is the base name of the image we are creating.
-new_image="${release}-preinstalled-server-arm64+raspi4"
+new_image="${base_dist}-preinstalled-server-arm64+raspi4"
 # Comment out the following if apt is throwing errors silently.
 # Note that these only work for the chroot commands.
 silence_apt_flags="-o Dpkg::Use-Pty=0 -qq < /dev/null > /dev/null "
@@ -99,6 +99,7 @@ echo "Starting local container software installs."
 [[ ! $JUSTDEBS ]] && apt-get -o dir::cache::archives=$apt_cache install libc6-arm64-cross -y &>> /tmp/main.install.log 
 [[ ! $JUSTDEBS ]] && apt-get -o dir::cache::archives=$apt_cache install pv -y &>> /tmp/main.install.log 
 [[ ! $JUSTDEBS ]] && apt-get -o dir::cache::archives=$apt_cache install u-boot-tools -y &>> /tmp/main.install.log 
+[[ ! $JUSTDEBS ]] && apt-get -o dir::cache::archives=$apt_cache install byobu -y &>> /tmp/main.install.log 
 apt-get -o dir::cache::archives=$apt_cache install vim -y &>> /tmp/main.install.log 
 echo -e "Performing cache volume apt autoclean.\n\r"
 apt-get -o dir::cache::archives=$apt_cache autoclean -y -qq &>> /tmp/main.install.log 
@@ -506,8 +507,8 @@ startfunc
     echo "loop_device is ${loop_device}"
     #e2fsck -f /dev/loop0p2
     #resize2fs /dev/loop0p2
-    echo "release is ${release}"
-    if [ ${release} == "bionic" ]; then
+    echo "release is ${base_dist}"
+    if [ ${base_dist} == "bionic" ]; then
         [[ -f /output/image_resized ]] && echo "* Image is correct size" || resize_bionic
     fi
     # To stop here "rm /flag/done.ok_to_continue_after_mount_image".
@@ -703,9 +704,26 @@ startfunc
     cd $workdir/rpi-linux
     debcmd="make \
     ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
-    -j$(($(nproc) + 1)) O=$workdir/kernel-build \
+    -j$(($(nproc) + 1)) \
     bindeb-pkg" 
     
+    [[ $BUILDNATIVE ]] && waitfor "image_apt_installs"
+    arbitrary_wait_here
+    [[ $BUILDNATIVE ]] && cp /usr/bin/aarch64-linux-gnu-gcc \
+    /mnt/usr/local/bin/gcc
+    [[ $BUILDNATIVE ]] && cp /usr/bin/aarch64-linux-gnu-ld \
+    /mnt/usr/local/bin/ld
+    [[ $BUILDNATIVE ]] && cp /usr/bin/aarch64-linux-gnu-ld.bfd \
+    /mnt/usr/local/bin/ld.bfd
+    [[ $BUILDNATIVE ]] && cp /usr/bin/aarch64-linux-gnu-ld.gold \
+    /mnt/usr/local/bin/ld.gold
+    [[ $BUILDNATIVE ]] && cp /usr/bin/aarch64-linux-gnu-cpp \
+    /mnt/usr/local/bin/cpp
+    [[ $BUILDNATIVE ]] && cp /usr/bin/aarch64-linux-gnu-g++ \
+    /mnt/usr/local/bin/g++
+    [[ $BUILDNATIVE ]] && debcmd='chroot /mnt /bin/bash -c "make -j$(($(nproc) + 1)) \
+    O=$workdir/kernel-build/ \
+    bindeb-pkg"'
 
     echo $debcmd
     $debcmd &>> /tmp/${FUNCNAME[0]}.compile.log
@@ -773,6 +791,9 @@ startfunc
     chroot /mnt /bin/bash -c "/usr/local/bin/chroot-apt-wrapper remove \
     linux-image-raspi2 linux-image*-raspi2 linux-modules*-raspi2 -y --purge" \
     &>> /tmp/${FUNCNAME[0]}.install.log || true
+    chroot /mnt /bin/bash -c "/usr/local/bin/chroot-apt-wrapper remove \
+    linux-image-4.15* linux-modules-4.15* -y --purge" \
+    &>> /tmp/${FUNCNAME[0]}.install.log || true
     chroot /mnt /bin/bash -c "/usr/local/bin/chroot-dpkg-wrapper -i /tmp/*.deb" \
     &>> /tmp/${FUNCNAME[0]}.install.log || true
     cp /mnt/boot/initrd.img-$KERNEL_VERS /mnt/boot/firmware/initrd.img
@@ -807,8 +828,14 @@ non-free_firmware () {
     git_get "https://github.com/RPi-Distro/firmware-nonfree" "firmware-nonfree"
     waitfor "image_mount"
 startfunc
-    [[ ${release} == "bionic" ]] && mkdir -p /mnt/usr/lib/firmware
-    cp -af $workdir/firmware-nonfree/* /mnt/usr/lib/firmware
+    mkdir -p /mnt/usr/lib/firmware
+    mkdir -p /mnt/lib/firmware
+    if [[ -L "/mnt/lib" && -d "/mnt/lib" ]]
+    then
+        cp -af $workdir/firmware-nonfree/* /mnt/usr/lib/firmware
+    else
+        cp -af $workdir/firmware-nonfree/* /mnt/lib/firmware
+    fi
 endfunc
 }
 
@@ -961,10 +988,19 @@ wifi_firmware_modification () {
 startfunc    
     #echo "* Modifying wireless firmware if necessary."
     # as per https://andrei.gherzan.ro/linux/raspbian-rpi4-64/
-    if ! grep -qs 'boardflags3=0x44200100' \
+        if [[ -L "/mnt/lib" && -d "/mnt/lib" ]]
+    then
+        if ! grep -qs 'boardflags3=0x44200100' \
     /mnt/usr/lib/firmware/brcm/brcmfmac43455-sdio.txt
         then sed -i -r 's/0x48200100/0x44200100/' \
         /mnt/usr/lib/firmware/brcm/brcmfmac43455-sdio.txt
+        fi
+    else
+        if ! grep -qs 'boardflags3=0x44200100' \
+    /mnt/lib/firmware/brcm/brcmfmac43455-sdio.txt
+        then sed -i -r 's/0x48200100/0x44200100/' \
+        /mnt/lib/firmware/brcm/brcmfmac43455-sdio.txt
+        fi
     fi
 endfunc
 }
@@ -994,6 +1030,8 @@ startfunc
     #chroot /mnt /bin/bash -c "mkimage -A arm64 -O linux -T script \
     #-d /etc/flash-kernel/bootscript/bootscr.rpi \
     #/boot/firmware/boot.scr" &>> /tmp/${FUNCNAME[0]}.compile.log
+    [[ !  -f /mnt/etc/flash-kernel/bootscript/bootscr.rpi ]] && \
+    cp /source-ro/bootscr.rpi /mnt/etc/flash-kernel/bootscript/bootscr.rpi
     mkimage -A arm64 -O linux -T script \
     -d /mnt/etc/flash-kernel/bootscript/bootscr.rpi3 \
     /mnt/boot/firmware/boot.scr &>> /tmp/${FUNCNAME[0]}.compile.log
@@ -1030,6 +1068,7 @@ EOF
 	#
 	/usr/bin/dpkg -i /var/cache/apt/archives/*.deb
 	/usr/local/bin/chroot-apt-wrapper remove linux-image-raspi2 linux-image*-raspi2 -y --purge
+	purge-old-kernels --keep 1 -qy
 	/usr/local/bin/chroot-apt-wrapper update && /usr/local/bin/chroot-apt-wrapper upgrade -y
 	/usr/local/bin/chroot-apt-wrapper install qemu-user-binfmt -qq
 	/usr/sbin/update-initramfs -c -k all
@@ -1088,7 +1127,12 @@ EOF
 	KERNEL_VERSION="$1"
 	KERNEL_INSTALLED_PATH="$2"
 	
-	mkdir -p /usr/lib/firmware/${KERNEL_VERSION}/device-tree/
+	if [[ -L "/lib" && -d "/lib" ]]
+	then
+	    mkdir -p /usr/lib/firmware/${KERNEL_VERSION}/device-tree/
+	else
+	    mkdir -p /lib/firmware/${KERNEL_VERSION}/device-tree/
+	fi
 	
 	exit 0
 EOF
@@ -1229,7 +1273,7 @@ endfunc
 
 xdelta3_image_export () {
 startfunc
-        echo "* Making xdelta3 binary diffs between current eoan base image"
+        echo "* Making xdelta3 binary diffs between current ${base_dist} base image"
         echo "* and the new images."
         xdelta3 -e -S none -I 0 -B 1812725760 -W 16777216 -fs \
         $workdir/old_image.img $workdir/${new_image}.img \
@@ -1244,11 +1288,11 @@ startfunc
              $workdir/patch.xdelta"
             $xdelta_patchout_compresscmd
             cp "$workdir/patch.xdelta.$i" \
-     "/output/eoan-daily-preinstalled-server_$KERNEL_VERS_${now}.xdelta3.$i"
+     "/output/${base_dist}-daily-preinstalled-server_$KERNEL_VERS_${now}.xdelta3.$i"
             #$xdelta_patchout_cpcmd
-            chown $USER:$GROUP /output/eoan-daily-preinstalled-server_$KERNEL_VERS_${now}.xdelta3.$i
+            chown $USER:$GROUP /output/${base_dist}-daily-preinstalled-server_$KERNEL_VERS_${now}.xdelta3.$i
             echo "Xdelta3 file exported to:"
-            echo "/output/eoan-daily-preinstalled-server_$KERNEL_VERS_${now}.xdelta3.$i"
+            echo "/output/${base_dist}-daily-preinstalled-server_$KERNEL_VERS_${now}.xdelta3.$i"
         done
 endfunc
 }
