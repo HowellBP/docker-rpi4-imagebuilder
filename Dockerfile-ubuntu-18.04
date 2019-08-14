@@ -35,6 +35,7 @@ RUN set -ex \
                libssl-dev \
                libxdelta2 \
                libpython3.7 \
+               parted \
                patch \
                psmisc \
                pv \

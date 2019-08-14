@@ -73,9 +73,7 @@ kernelgitrepo="https://github.com/raspberrypi/linux.git"
 srcdir=${PROG_DIR}
 srcdir="${srcdir:-.}"
 
-
 image="${image:-${defaultimage}}"
-
 
 #docker_args="-it "
 # The bash script & copy log if failure setup doesn't work without the "-dt" docker argument.

@@ -470,6 +470,18 @@ startfunc
 endfunc
 }
 
+resize_bionic () {
+startfunc
+    echo "* Resizing root partition."
+    parted /dev/${loop_device} resizepart 2 100%
+    kpartx -u /dev/${loop_device}
+    fsck.ext4 -V /dev/mapper/${loop_device}p2
+    resize2fs /dev/mapper/${loop_device}p2
+    echo "* Image has been resized"
+    touch /output/image_resized
+endfunc
+}
+
 image_mount () {
     waitfor "image_extract"
 startfunc 
@@ -477,9 +489,6 @@ startfunc
     dmsetup remove -f /dev/mapper/${old_loop_device}p2 &> /dev/null || true; \
     dmsetup remove -f /dev/mapper/${old_loop_device}p1 &> /dev/null || true; \
     losetup -d /dev/${old_loop_device} &> /dev/null || true)
-    echo "* Increasing image size by 1024M"
-    echo "dd if=/dev/zero bs=1M count=1024 >> $workdir/$new_image.img"
-    dd if=/dev/zero bs=1M count=1024 >> $workdir/$new_image.img
     echo "* Clearing existing loopback mounts."
     # This is dangerous as this may not be the relevant loop device.
     #losetup -d /dev/loop0 &>/dev/null || true
@@ -487,27 +496,20 @@ startfunc
     dmsetup info
     losetup -a
     cd $workdir
+    echo "* Increasing base image size by 1GB if necessary"
+    [[ -f /output/image_resized ]] || dd if=/dev/zero bs=1M count=1024 >> ${new_image}.img
     echo "* Mounting: ${new_image}.img"
     loop_device=$(kpartx -avs ${new_image}.img \
     | sed -n 's/\(^.*map\ \)// ; s/p1\ (.*//p')
     echo $loop_device >> /tmp/loop_device
     echo $loop_device > /output/loop_device
     echo "loop_device is ${loop_device}"
-    echo "* Resizing root partition."
-    echo "parted /dev/${loop_device} resizepart 2 100%"
-    parted /dev/${loop_device} resizepart 2 100%
-    echo "* kpartx reload"
-    echo "kpartx -u /dev/${loop_device}"
-    kpartx -u /dev/${loop_device}
-    echo "* fsck"
-    echo "fsck.ext4 -V /dev/mapper/${loop_device}p2"
-    fsck.ext4 -V /dev/mapper/${loop_device}p2
-    echo "* resize"
-    echo "resize2fs /dev/mapper/${loop_device}p2"
-    resize2fs /dev/mapper/${loop_device}p2
     #e2fsck -f /dev/loop0p2
     #resize2fs /dev/loop0p2
-    
+    echo "release is ${release}"
+    if [ ${release} == "bionic" ]; then
+        [[ -f /output/image_resized ]] && echo "* Image is correct size" || resize_bionic
+    fi
     # To stop here "rm /flag/done.ok_to_continue_after_mount_image".
     if [ ! -f /flag/done.ok_to_continue_after_mount_image ]; then
         echo "** Image mount done & container paused. **"
@@ -804,7 +806,8 @@ endfunc
 non-free_firmware () {
     git_get "https://github.com/RPi-Distro/firmware-nonfree" "firmware-nonfree"
     waitfor "image_mount"
-startfunc    
+startfunc
+    [[ ${release} == "bionic" ]] && mkdir -p /mnt/usr/lib/firmware
     cp -af $workdir/firmware-nonfree/* /mnt/usr/lib/firmware
 endfunc
 }
