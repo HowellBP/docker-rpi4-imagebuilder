@@ -478,6 +478,7 @@ startfunc
     dmsetup remove -f /dev/mapper/${old_loop_device}p1 &> /dev/null || true; \
     losetup -d /dev/${old_loop_device} &> /dev/null || true)
     echo "* Increasing image size by 1024M"
+    echo "dd if=/dev/zero bs=1M count=1024 >> $workdir/$new_image.img"
     dd if=/dev/zero bs=1M count=1024 >> $workdir/$new_image.img
     echo "* Clearing existing loopback mounts."
     # This is dangerous as this may not be the relevant loop device.
@@ -491,13 +492,18 @@ startfunc
     | sed -n 's/\(^.*map\ \)// ; s/p1\ (.*//p')
     echo $loop_device >> /tmp/loop_device
     echo $loop_device > /output/loop_device
+    echo "loop_device is ${loop_device}"
     echo "* Resizing root partition."
+    echo "parted /dev/${loop_device} resizepart 2 100%"
     parted /dev/${loop_device} resizepart 2 100%
     echo "* kpartx reload"
+    echo "kpartx -u /dev/${loop_device}"
     kpartx -u /dev/${loop_device}
     echo "* fsck"
-    fsck.ext4 -f /dev/mapper/${loop_device}p2
+    echo "fsck.ext4 -V /dev/mapper/${loop_device}p2"
+    fsck.ext4 -V /dev/mapper/${loop_device}p2
     echo "* resize"
+    echo "resize2fs /dev/mapper/${loop_device}p2"
     resize2fs /dev/mapper/${loop_device}p2
     #e2fsck -f /dev/loop0p2
     #resize2fs /dev/loop0p2
