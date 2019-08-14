@@ -91,7 +91,6 @@ mkdir -p $apt_cache/partial
 #env >> /output/environment
 
 echo "Starting local container software installs."
-apt-get -o dir::cache::archives=$apt_cache install curl -y &>> /tmp/main.install.log 
 [[ ! $JUSTDEBS ]] && apt-get -o dir::cache::archives=$apt_cache install lsof -y &>> /tmp/main.install.log 
 [[ ! $JUSTDEBS ]] && apt-get -o dir::cache::archives=$apt_cache install xdelta3 -y &>> /tmp/main.install.log 
 [[ ! $JUSTDEBS ]] && apt-get -o dir::cache::archives=$apt_cache install e2fsprogs -y &>> /tmp/main.install.log 
@@ -222,7 +221,7 @@ local_check () {
 }
 
 
-arbitrary_wait_here () {
+arbitrary_wait () {
     # To stop here "rm /flag/done.ok_to_continue_after_here".
     # Arbitrary build pause for debugging
     if [ ! -f /flag/done.ok_to_continue_after_here ]; then
@@ -428,10 +427,8 @@ endfunc
 download_base_image () {
 startfunc
     echo "* Downloading ${base_image} ."
-    #wget_fail=0
-    #wget -nv ${base_image_url} -O ${base_image} || wget_fail=1
-    curl_fail=0
-    curl -o $base_image_url ${base_image} || curl_fail=1
+    wget_fail=0
+    wget -nv ${base_image_url} -O ${base_image} || wget_fail=1
 endfunc
 }
 
@@ -480,8 +477,8 @@ startfunc
     dmsetup remove -f /dev/mapper/${old_loop_device}p2 &> /dev/null || true; \
     dmsetup remove -f /dev/mapper/${old_loop_device}p1 &> /dev/null || true; \
     losetup -d /dev/${old_loop_device} &> /dev/null || true)
-    #echo "* Increasing image size by 200M"
-    #dd if=/dev/zero bs=1M count=200 >> $workdir/$new_image.img
+    echo "* Increasing image size by 1024M"
+    dd if=/dev/zero bs=1M count=1024 >> $workdir/$new_image.img
     echo "* Clearing existing loopback mounts."
     # This is dangerous as this may not be the relevant loop device.
     #losetup -d /dev/loop0 &>/dev/null || true
@@ -490,11 +487,18 @@ startfunc
     losetup -a
     cd $workdir
     echo "* Mounting: ${new_image}.img"
-    
     loop_device=$(kpartx -avs ${new_image}.img \
     | sed -n 's/\(^.*map\ \)// ; s/p1\ (.*//p')
     echo $loop_device >> /tmp/loop_device
     echo $loop_device > /output/loop_device
+    echo "* Resizing root partition."
+    parted /dev/${loop_device} resizepart 2 100%
+    echo "* kpartx reload"
+    kpartx -u /dev/${loop_device}
+    echo "* fsck"
+    fsck.ext4 -f /dev/mapper/${loop_device}p2
+    echo "* resize"
+    resize2fs /dev/mapper/${loop_device}p2
     #e2fsck -f /dev/loop0p2
     #resize2fs /dev/loop0p2
     
@@ -617,9 +621,7 @@ endfunc
 }
 
 kernelbuild_setup () {
-    echo $(date) "++++ KERNEL BUILD GIT ++++"
     git_get "$kernelgitrepo" "rpi-linux" "$kernel_branch"
-    echo $(date) "++++ KERNEL BUILD GIT ++++"
     majorversion=$(grep VERSION $src_cache/rpi-linux/Makefile | \
     head -1 | awk -F ' = ' '{print $2}')
     patchlevel=$(grep PATCHLEVEL $src_cache/rpi-linux/Makefile | \
@@ -678,11 +680,8 @@ startfunc
     # This is needed to enable squashfs - which snapd requires, since otherwise
     # login at boot fails on the ubuntu server image.
     # This also enables the BPF syscall for systemd-journald firewalling
-    echo $(date) "++++ CONFORM CONFIG ++++"
-    [[ -e /source-ro/conform_config-${kernel_branch}.sh ]] && { bash -x /source-ro/conform_config-${kernel_branch}.sh ;true; } || \
-    bash -x /source-ro/conform_config.sh
-    echo $(date) "++++ CONFORM CONFIG ++++"
-    echo $(date) "++++ KERNEL BUILD START ++++"
+    [[ -e /source-ro/conform_config-${kernel_branch}.sh ]] && { /source-ro/conform_config-${kernel_branch}.sh ;true; } || \
+    /source-ro/conform_config.sh
     yes "" | make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
     O=$workdir/kernel-build/ \
     olddefconfig &>> /tmp/${FUNCNAME[0]}.compile.log
@@ -694,18 +693,14 @@ startfunc
     
     echo "* Making $KERNEL_VERS kernel debs."
     cd $workdir/rpi-linux
-    [[ ! $BUILDNATIVE ]] && debcmd="make \
+    debcmd="make \
     ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
-    -j$(($(nproc) + 1)) c \
+    -j$(($(nproc) + 1)) O=$workdir/kernel-build \
     bindeb-pkg" 
     
-    [[ $BUILDNATIVE ]] && waitfor "image_apt_installs"
-    arbitrary_wait_here
-    [[ $BUILDNATIVE ]] && debcmd='chroot /mnt /bin/bash -c "make -j$(($(nproc) + 1)) bindeb-pkg"'
 
     echo $debcmd
     $debcmd &>> /tmp/${FUNCNAME[0]}.compile.log
-    echo $(date) "++++ KERNEL BUILD END ++++"
     
 endfunc
 }
@@ -716,6 +711,7 @@ kernel_debs () {
 startfunc
 
    # Don't remake debs if they already exist in output.
+   arbitrary_wait
    KERNEL_VERS=$(cat /tmp/KERNEL_VERS)
    if test -n "$(find $apt_cache -maxdepth 1 -name linux-image-*${KERNEL_VERS}* -print -quit)"
    then
@@ -743,7 +739,6 @@ startfunc
         echo "Cached $KERNEL_VERS kernel debs not found. Building."
         kernel_build &
         spinnerwait kernel_build
-        arbitrary_wait_here
         echo "* Copying out git *${KERNEL_VERS}* kernel debs."
         rm -f $workdir/linux-libc-dev*.deb
         cp $workdir/*.deb $apt_cache/ || (echo "Kernel Build Failed!" ; pkill -F /flag/main)
@@ -1276,8 +1271,8 @@ touch /flag/done.ok_to_umount_image_after_build
 # For debugging.
 touch /flag/done.ok_to_continue_after_mount_image
 
-# Arbitrary_wait pause for debugging.
-[[ ! $ARBITRARY_WAIT ]] && touch /flag/done.ok_to_continue_after_here
+# Arbitrary pause for debugging.
+touch /flag/done.ok_to_continue_after_here
 
 # Delete this by connecting to the container using a shell if you want to 
 # debug the container before the container is exited.
@@ -1291,10 +1286,10 @@ touch /flag/done.ok_to_exit_container_after_build
 # So we will work around it.
 #inotify_touch_events &
 
-[[ $BUILDNATIVE || ! $JUSTDEBS  ]] && utility_scripts &
-[[ $BUILDNATIVE || ! $JUSTDEBS ]] && base_image_check
-[[ $BUILDNATIVE || ! $JUSTDEBS ]] && image_extract &
-[[ $BUILDNATIVE || ! $JUSTDEBS ]] && image_mount &
+[[ ! $JUSTDEBS ]] && utility_scripts &
+[[ ! $JUSTDEBS ]] && base_image_check
+[[ ! $JUSTDEBS ]] && image_extract &
+[[ ! $JUSTDEBS ]] && image_mount &
 [[ ! $JUSTDEBS ]] && rpi_firmware &
 [[ ! $JUSTDEBS ]] && armstub8-gic &
 [[ ! $JUSTDEBS ]] && non-free_firmware & 
@@ -1307,9 +1302,9 @@ kernelbuild_setup &
 [[ ! $JUSTDEBS ]] && first_boot_scripts_setup &
 [[ ! $JUSTDEBS ]] && added_scripts &
 waitforstart "kernelbuild_setup" && kernel_debs &
-[[ $BUILDNATIVE || ! $JUSTDEBS ]] && arm64_chroot_setup &
-[[ $BUILDNATIVE || ! $JUSTDEBS ]] && image_apt_installs &
-[[ $BUILDNATIVE || ! $JUSTDEBS ]] && spinnerwait image_apt_installs
+[[ ! $JUSTDEBS ]] && arm64_chroot_setup &
+[[ ! $JUSTDEBS ]] && image_apt_installs &
+[[ ! $JUSTDEBS ]] && spinnerwait image_apt_installs
 [[ ! $JUSTDEBS ]] && kernel_deb_install
 [[ ! $JUSTDEBS ]] && image_and_chroot_cleanup
 [[ ! $JUSTDEBS ]] && image_unmount
