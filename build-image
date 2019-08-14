@@ -223,29 +223,29 @@ check_for_current_image () {
 }
 
 
-if [ ! -f $(abspath ${srcdir})/$base_image ] && [ -n "$BUILDNATIVE" -o ! -n "$JUSTDEBS" ]; then
+if [ ! -f $(abspath ${srcdir})/$base_image ] && [ ! $JUSTDEBS ]; then
         download_base_image
     else
-        [ -n "$BUILDNATIVE" -o ! -n "$JUSTDEBS" ] && check_for_current_image
+        [ ! $JUSTDEBS ] && check_for_current_image
 fi
 
 
 
-if [ ! -f "$(abspath ${srcdir})/${base_image%.xz}" ] && [ -n "$BUILDNATIVE" -o ! -n "$JUSTDEBS" ]
+if [ ! -f "$(abspath ${srcdir})/${base_image%.xz}" ] && [ ! $JUSTDEBS ]
     then 
         cd $(abspath ${srcdir})
         echo "* Extracting $(abspath ${srcdir})/${base_image%.xz} ."
         if [ "$(which xz)" ]; then
-            xz -vdk -T 0 $(abspath ${srcdir})/${base_image}
+            xz -vdk $(abspath ${srcdir})/${base_image}
         else
-            linux_cmd "xz -vdk -T 0 ${base_image}"
+            linux_cmd "xz -vdk ${base_image}"
         fi
     else
     echo "* Base image already extracted."
 fi
 
 
-[ -n "$BUILDNATIVE" -o ! -n "$JUSTDEBS" ] && docker_args+="-v $(abspath ${srcdir})/$base_image:/$base_image "
+[ ! $JUSTDEBS ] && docker_args+="-v $(abspath ${srcdir})/$base_image:/$base_image "
 
 # For ccache
 #docker_args+="-e CCACHE_DIR=/ccache --volumes-from ccache -v ccache:/ccache "
@@ -261,12 +261,12 @@ docker_args+="-e apt_cache=/cache/apt_cache "
 docker_args+="-e workdir=/build/source "
 
 # Send in base image environment variables:
-[ -n "$BUILDNATIVE" -o ! -n "$JUSTDEBS" ] && docker_args+="-e base_url=${base_url} -e base_image=${base_image} "
+[ ! $JUSTDEBS ] && docker_args+="-e base_url=${base_url} -e base_image=${base_image} "
 
 #Send in linux repo environment variables:
 docker_args+="-e kernel_branch=${kernel_branch} -e kernelgitrepo=${kernelgitrepo} "
 
-# Send in release version environment variabl:
+# Send in release version environment variable:
 docker_args+="-e release=${release} "
 
 # Let XZ be disabled by default.
@@ -280,14 +280,6 @@ docker_args+="-e release=${release} "
 
 # DEBUG?
 [ -n "$DEBUG" ] && docker_args+="-e DEBUG=${DEBUG} "
-
-# Is the build set to be done in a native chroot?
-[ -n "$BUILDNATIVE" ] && docker_args+="-e BUILDNATIVE=${BUILDNATIVE} "
-
-# Should we enable the arbitrary wait flag?
-[ -n "$ARBITRARY_WAIT" ] && docker_args+="-e ARBITRARY_WAIT=${ARBITRARY_WAIT} "
-
-
 
 # Send in columns for display.
 shopt -s checkwinsize 
