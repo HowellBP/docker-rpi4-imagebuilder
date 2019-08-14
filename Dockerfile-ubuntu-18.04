@@ -35,6 +35,7 @@ RUN set -ex \
                libpython3.7 \
                linux-image-4.15.0-55-generic \
                linux-modules-4.15.0-55-generic \
+               parted \
                patch \
                psmisc \
                pv \
