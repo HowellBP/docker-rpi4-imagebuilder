@@ -1205,6 +1205,7 @@ startfunc
      echo "* Compressing ${new_image} with $i and exporting."
      compress_flags=""
      [ "$i" == "lz4" ] && compress_flags="-m"
+     [ "$i" == "xz" ] && compress_flags="-T 0"
      compresscmd="$i -v -k $compress_flags ${new_image}.img"
      echo $compresscmd
      $compresscmd
