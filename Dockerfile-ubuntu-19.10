@@ -4,10 +4,12 @@ RUN set -ex \
     && sed -i -- 's/# deb-src/deb-src/g' /etc/apt/sources.list \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
+               apt-transport-https \
                build-essential \
                bc \
                bison \
                binfmt-support \
+               ca-certificates \
                ccache \
                cdbs \
                cmake \
@@ -33,8 +35,6 @@ RUN set -ex \
                libssl-dev \
                libxdelta2 \
                libpython3.7 \
-               linux-image-5.2.0-10-generic \
-               linux-modules-5.2.0-10-generic \
                patch \
                psmisc \
                pv \
@@ -50,10 +50,14 @@ RUN set -ex \
                xxd \
                xz-utils \         
     && apt-get build-dep -y linux-image-raspi2 \
-    && apt-get build-dep -y linux-image-5.2.0-10-generic \
+    && apt-get build-dep -y linux-image-generic \
     && apt-get upgrade -y \
     && (apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu \
                cpp-aarch64-linux-gnu \
-               g++-aarch64-linux-gnu || true ) \
+               g++-aarch64-linux-gnu \
+#               linux-generic \
+#               linux-image-generic \
+#               linux-firmware 
+                || true ) \
     && apt-get clean \
     && rm -rf /tmp/* /var/tmp/*

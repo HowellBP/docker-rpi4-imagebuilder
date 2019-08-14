@@ -1,13 +1,15 @@
-FROM ubuntu:18.04
+FROM ubuntu:latest
 
 RUN set -ex \
     && sed -i -- 's/# deb-src/deb-src/g' /etc/apt/sources.list \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
+               apt-transport-https \
                build-essential \
                bc \
                bison \
                binfmt-support \
+               ca-certificates \
                ccache \
                cdbs \
                cmake \
@@ -33,9 +35,6 @@ RUN set -ex \
                libssl-dev \
                libxdelta2 \
                libpython3.7 \
-               linux-image-4.15.0-55-generic \
-               linux-modules-4.15.0-55-generic \
-               parted \
                patch \
                psmisc \
                pv \
@@ -49,12 +48,13 @@ RUN set -ex \
                wget \
                xdelta3 \
                xxd \
-               xz-utils \
+               xz-utils \         
     && apt-get build-dep -y linux-image-raspi2 \
-    && apt-get build-dep -y linux-image-4.15.0-55-generic \
+    && apt-get build-dep -y linux-image-generic \
     && apt-get upgrade -y \
     && (apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu \
                cpp-aarch64-linux-gnu \
-               g++-aarch64-linux-gnu || true ) \
+               g++-aarch64-linux-gnu \
+                || true ) \
     && apt-get clean \
     && rm -rf /tmp/* /var/tmp/*
