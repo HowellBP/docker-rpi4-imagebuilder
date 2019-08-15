@@ -497,8 +497,8 @@ startfunc
     dmsetup info
     losetup -a
     cd $workdir
-    echo "* Increasing base image size by 1GB if necessary"
-    [[ -f /output/image_resized ]] || dd if=/dev/zero bs=1M count=1024 >> ${new_image}.img
+    echo "* Increasing base image size by .5GB if necessary"
+    [[ -f /output/image_resized ]] || dd if=/dev/zero bs=1M count=512 >> ${new_image}.img
     echo "* Mounting: ${new_image}.img"
     loop_device=$(kpartx -avs ${new_image}.img \
     | sed -n 's/\(^.*map\ \)// ; s/p1\ (.*//p')
@@ -708,7 +708,7 @@ startfunc
     bindeb-pkg" 
     
     [[ $BUILDNATIVE ]] && waitfor "image_apt_installs"
-    arbitrary_wait_here
+    arbitrary_wait
     [[ $BUILDNATIVE ]] && cp /usr/bin/aarch64-linux-gnu-gcc \
     /mnt/usr/local/bin/gcc
     [[ $BUILDNATIVE ]] && cp /usr/bin/aarch64-linux-gnu-ld \
